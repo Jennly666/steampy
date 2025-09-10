@@ -60,6 +60,12 @@ class SteamMarket:
         return response.json()
 
     @login_required
+    def get_steam64id_from_cookies(self):
+        cookies = self._session.cookies.get_dict('steamcommunity.com')
+        steam_id = cookies.get('steamLoginSecure').split('%7C%7C')[0]
+        return steam_id
+    
+    @login_required
     def get_my_market_listings(self) -> dict:
         response = self._session.get(f'{SteamUrl.COMMUNITY_URL}/market')
         if response.status_code != HTTPStatus.OK:
