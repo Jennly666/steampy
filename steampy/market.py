@@ -3,6 +3,7 @@ import time
 import urllib.parse
 from decimal import Decimal
 from http import HTTPStatus
+import random
 
 from requests import Session
 
