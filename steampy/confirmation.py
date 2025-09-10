@@ -17,9 +17,10 @@ if TYPE_CHECKING:
 
 
 class Confirmation:
-    def __init__(self, data_confid, nonce) -> None:
+    def __init__(self, data_confid, nonce, creator_id) -> None:
         self.data_confid = data_confid
         self.nonce = nonce
+        self.creator_id = creator_id
 
 
 class Tag(enum.Enum):
@@ -47,6 +48,17 @@ class ConfirmationExecutor:
         confirmation = self._select_sell_listing_confirmation(confirmations, asset_id)
         return self._send_confirmation(confirmation)
 
+
+    def confirm_by_id(self, confirmation_id: str) -> bool:
+        confirmations = self._get_confirmations()
+        for conf in confirmations:
+            print(f"data_confid: {conf.data_confid}, creator_id: {conf.creator_id}")
+            if str(conf.creator_id) == str(confirmation_id):
+                result = self._send_confirmation(conf)
+                print(result)
+                return result.get("success", False)
+        return False
+
     def _send_confirmation(self, confirmation: Confirmation) -> dict:
         tag = Tag.ALLOW
         params = self._create_confirmation_params(tag.value)
@@ -64,7 +76,8 @@ class ConfirmationExecutor:
             for conf in confirmations_json['conf']:
                 data_confid = conf['id']
                 nonce = conf['nonce']
-                confirmations.append(Confirmation(data_confid, nonce))
+                creator_id = conf['creator_id']
+                confirmations.append(Confirmation(data_confid, nonce, creator_id))
             return confirmations
         raise ConfirmationExpected
 
