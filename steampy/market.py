@@ -146,19 +146,58 @@ class SteamMarket:
             'market_hash_name': market_name,
             'price_total': str(Decimal(price_single_item) * Decimal(quantity)),
             'quantity': quantity,
+            "confirmation": 0  # initial value is 0
         }
         headers = {
             'Referer': f'{SteamUrl.COMMUNITY_URL}/market/listings/{game.app_id}/{urllib.parse.quote(market_name)}',
         }
 
         response = self._session.post(f'{SteamUrl.COMMUNITY_URL}/market/createbuyorder/', data, headers=headers).json()
+        print("First order response:", response)
 
-        if (success := response.get('success')) != 1:
-            raise ApiException(
-                f'There was a problem creating the order. Are you using the right currency? success: {success}',
+        # If the order is successful, return immediately
+        if response.get("success") == 1:
+            return response
+        
+        # If mobile confirmation is required
+        if response.get("need_confirmation"):
+            if not self._steam_guard:
+                raise ApiException("Order requires mobile confirmation, but steam_guard info is not provided")
+        
+            confirmation_id = response["confirmation"]["confirmation_id"]
+            print("Confirmation required, ID:", confirmation_id)
+        
+            # Execute mobile confirmation
+            confirmation_executor = ConfirmationExecutor(
+                self._steam_guard['identity_secret'],
+                self.get_steam64id_from_cookies(),
+                self._session
             )
-
-        return response
+            time.sleep(random.uniform(2, 4))
+            success = confirmation_executor.confirm_by_id(confirmation_id)
+            if not success:
+                raise ApiException("Mobile confirmation failed")
+        
+            print("✅ Mobile confirmation succeeded, resending request with confirmation ID")
+        
+            # Second request, update confirmation to the confirmed ID
+            data["confirmation"] = confirmation_id
+            time.sleep(random.uniform(2, 4))
+            response = self._session.post(
+                SteamUrl.COMMUNITY_URL + "/market/createbuyorder/",
+                data,
+                headers=headers
+            ).json()
+            print("Second order response:", response)
+        
+            if response.get("success") == 1:
+                print("✅ Buy order effective")
+                return response
+            else:
+                raise ApiException(f"Order failed after confirmation: {response}")
+        
+        # Other exceptions
+        raise ApiException(f"Buy order failed: {response}")
 
     @login_required
     def buy_item(
@@ -171,7 +210,7 @@ class SteamMarket:
         currency: Currency = Currency.USD,
     ) -> dict:
         data = {
-            'sessionid': self._session.cookies.get_dict("steamcommunity.com")['sessionid'],
+            'sessionid': self._session_id,
             'currency': currency.value,
             'subtotal': price - fee,
             'fee': fee,
